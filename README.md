@@ -4,7 +4,8 @@ Simple bash script to prebake videos to text and display them in a terminal.
 
 ## Requirements
 
-An `mpv` build with `libcaca`.
+An `mpv` build with `libcaca`.\
+`ffprobe`
 
 ## Usage
 
