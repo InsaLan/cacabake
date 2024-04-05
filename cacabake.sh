@@ -24,7 +24,6 @@ elif [ $input -eq 1 ]; then # playback
     echo "aaa"
 elif [ $input -eq 2 ]; then # bake
     touch ${1%%.*}.baked
-    # Add fps
-    echo test
-    mpv $1 --vo=caca --no-config --no-terminal # > ${1%%.*}.baked
+    ffmpeg -i $1 > ${1%%.*}.baked 
+    mpv $1 --vo=caca --framedrop=no --no-config --no-terminal > ${1%%.*}.baked
 fi
