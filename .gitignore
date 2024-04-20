@@ -1,2 +1,9 @@
 *.mp4
 *.baked
+*.old
+.directory
+cacabake
+
+# Added by cargo
+
+/target
