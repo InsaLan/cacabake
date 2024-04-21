@@ -6,6 +6,7 @@ use std::fs::*;
 use std::io::{Write, stdout};
 use std::path::Path;
 use std::process::Command;
+use std::str::FromStr;
 use std::thread;
 use std::time::Duration;
 
@@ -34,9 +35,20 @@ async fn bake_video(spath: &Path) {
 	
 	println!("Getting framerate...");
 	
-	let ffoutput = ffprobe::ffprobe(spath).unwrap();
+	let ffoutput = ffprobe::ffprobe(spath).expect("FFprobe error");
 	//dbg!(&ffoutput);
-	let framerate = eval(&ffoutput.streams[0].avg_frame_rate).unwrap(); // Framerate is given as a fraction, we need a number so we use the `evalexpr` crate
+	let mut i = -1;
+	for stream in &ffoutput.streams { // Pick the first stream that is a video stream
+		i += 1;
+		if stream.codec_type == Some(String::from_str("video").unwrap()) {
+			break;
+		}
+	}
+	if i == -1 {
+		println!("No video stream found in input file");
+	}
+		
+	let framerate = eval(&ffoutput.streams[i as usize].avg_frame_rate).expect("Error evaluating framerate"); // Framerate is given as a fraction, we need a number so we use the `evalexpr` crate
 	
 	if spath.with_extension("baked").exists() {
 		remove_file(spath.with_extension("baked")).expect("Failed to remove existing baked file");
@@ -58,9 +70,9 @@ async fn bake_video(spath: &Path) {
 		.input_with_file(spath.to_path_buf()).done()
 		.arg("-loglevel").arg("quiet")
 		.arg(tmppath.join("frames/%d.png").to_str().unwrap())
-		.start().unwrap();
+		.start().expect("FFmpeg error");
 
-	ffmpeg.wait().unwrap();
+	ffmpeg.wait().expect("FFmpeg error");
 	
 	let tsize = crossterm::terminal::size().expect("Couldn't get terminal size");
 	
@@ -92,6 +104,7 @@ async fn play_video(spath: &Path, lop: bool) {
 	
 	crossterm::terminal::enable_raw_mode().unwrap();
 	crossterm::execute!(stdout, crossterm::cursor::Hide).unwrap();
+	crossterm::execute!(stdout, crossterm::terminal::DisableLineWrap).unwrap();
 	crossterm::execute!(stdout, crossterm::terminal::EnterAlternateScreen).unwrap();
 	
 	'outer: loop {
@@ -103,13 +116,13 @@ async fn play_video(spath: &Path, lop: bool) {
 			crossterm::execute!(stdout, crossterm::terminal::Clear(crossterm::terminal::ClearType::All)).unwrap(); // This almost works...
 			
 			let print_task = task::spawn(async move {
-				print!("{}", frame.clone());
+				print!("{}", &frame.trim_end_matches('\n'));
 			});
 			let tempo_task = task::spawn(async move {
 				thread::sleep(Duration::from_secs_f64(1.0 / framerate));
 			});
 			
-			tokio::try_join!(print_task, tempo_task).unwrap();
+			tokio::try_join!(print_task, tempo_task).unwrap(); // Wait for both tasks to finish
 			
 			if crossterm::event::poll(std::time::Duration::from_secs(0)).unwrap() {
 				if let crossterm::event::Event::Key(key_event) = crossterm::event::read().unwrap() {
@@ -129,6 +142,7 @@ async fn play_video(spath: &Path, lop: bool) {
 		}
 	}
 	crossterm::execute!(stdout, crossterm::cursor::Show).unwrap();
+	crossterm::execute!(stdout, crossterm::terminal::EnableLineWrap).unwrap();
 }
 
 fn print_usage(program: &str, opts: Options) {

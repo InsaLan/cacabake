@@ -4,6 +4,8 @@ Rust script for baking (or pre-rendering) videos to text using libcaca, and then
 
 In my rough testing, this showed to be ~5 times more efficient in cpu usage than `mpv --vo=caca` (this was NOT a waste of time !! yay)
 
+However, baked text files often weigh 3-5 times more than the original video file, depending on compression.
+
 ## Requirements
 
 `ffmpeg` \
