@@ -54,14 +54,14 @@ async fn bake_video(spath: &Path) {
 	println!("Extracting frames...");
 	
 	let mut ffmpeg = FFmpeg::new()
-        .stderr(std::process::Stdio::inherit())
-        .input_with_file(spath.to_path_buf()).done()
-        .arg("-loglevel").arg("quiet")
-        .arg(tmppath.join("frames/%d.png").to_str().unwrap())
-        .start().unwrap();
+		.stderr(std::process::Stdio::inherit())
+		.input_with_file(spath.to_path_buf()).done()
+		.arg("-loglevel").arg("quiet")
+		.arg(tmppath.join("frames/%d.png").to_str().unwrap())
+		.start().unwrap();
 
-    ffmpeg.wait().unwrap();
-    
+	ffmpeg.wait().unwrap();
+	
 	let tsize = crossterm::terminal::size().expect("Couldn't get terminal size");
 	
 	let framepaths = read_dir(tmppath.join("frames")).unwrap();
@@ -112,14 +112,14 @@ async fn play_video(spath: &Path, lop: bool) {
 			tokio::try_join!(print_task, tempo_task).unwrap();
 			
 			if crossterm::event::poll(std::time::Duration::from_secs(0)).unwrap() {
-	            if let crossterm::event::Event::Key(key_event) = crossterm::event::read().unwrap() {
-	                if key_event.code == crossterm::event::KeyCode::Char('q') {
-	                    crossterm::execute!(stdout, crossterm::terminal::LeaveAlternateScreen).unwrap();
-	                    println!("Playback interrupted by user");
-	                    break 'outer;
-	                }
-	            }
-	        }
+				if let crossterm::event::Event::Key(key_event) = crossterm::event::read().unwrap() {
+					if key_event.code == crossterm::event::KeyCode::Char('q') {
+						crossterm::execute!(stdout, crossterm::terminal::LeaveAlternateScreen).unwrap();
+						println!("Playback interrupted by user");
+						break 'outer;
+					}
+				}
+			}
 		}
 
 		if !lop {
@@ -142,32 +142,32 @@ async fn main() {
 	let args: Vec<String> = env::args().collect();
 	let program = args[0].clone();
 	let mut opts = Options::new();
-    
-    opts.optflag("l", "loop", "play on loop (if input is baked file)");
-    opts.optflag("h", "help", "print this help menu");
+	
+	opts.optflag("l", "loop", "play on loop (if input is baked file)");
+	opts.optflag("h", "help", "print this help menu");
 	
 	let matches = match opts.parse(&args[1..]) {
-        Ok(m) => { m }
-        Err(f) => { panic!("{}",f.to_string()) }
-    };
-    
-    if matches.opt_present("h") {
-        print_usage(&program, opts);
-        return;
-    }
-    
-    let mut lop = false;
-    if matches.opt_present("l") {
-        lop = true;
-    }
-    
-    let spath = if !matches.free.is_empty() {
-        Path::new(matches.free[0].as_str())
-    } else {
-        print_usage(&program, opts);
-        return;
-    };
-    
+		Ok(m) => { m }
+		Err(f) => { panic!("{}",f.to_string()) }
+	};
+	
+	if matches.opt_present("h") {
+		print_usage(&program, opts);
+		return;
+	}
+	
+	let mut lop = false;
+	if matches.opt_present("l") {
+		lop = true;
+	}
+	
+	let spath = if !matches.free.is_empty() {
+		Path::new(matches.free[0].as_str())
+	} else {
+		print_usage(&program, opts);
+		return;
+	};
+	
 	if !(spath.exists()) {
 		println!("File not found");
 		return;
