@@ -69,30 +69,32 @@ async fn bake_video(spath: &Path) {
 		.stderr(std::process::Stdio::inherit())
 		.input_with_file(spath.to_path_buf()).done()
 		.arg("-loglevel").arg("quiet")
-		.arg(tmppath.join("frames/%d.png").to_str().unwrap())
+		.arg(tmppath.join("frames/%015d.png").to_str().unwrap())
 		.start().expect("FFmpeg error");
 
 	ffmpeg.wait().expect("FFmpeg error");
 	
 	let tsize = crossterm::terminal::size().expect("Couldn't get terminal size");
 	
-	let framepaths = read_dir(tmppath.join("frames")).unwrap();
+	let mut framepaths: Vec<_> = read_dir(tmppath.join("frames")).unwrap().map(|r| r.unwrap()).collect();
 	
-	let pb = ProgressBar::new(read_dir(tmppath.join("frames")).unwrap().by_ref().count() as u64);
-	println!("Rendering frames ...");
-	for framepath in framepaths {
-		write!(outfile, "ඞ").unwrap();
-		Command::new("img2txt")
-			.args(["-W", &tsize.0.to_string()])
-			.args(["-H", &tsize.1.to_string()])
-			.args(["-d", "none"])
-			.arg(framepath.unwrap().path().to_str().unwrap())
-			.stdout(outfile.try_clone().expect("Couldn't clone outfile"))
-			.output() // We don't care about the output but we need to wait for the command to finish
-			.expect("Error running img2txt. Check if libcaca is installed");
-		pb.inc(1);
-	}
-	pb.finish_with_message("done");
+	framepaths.sort_by_key(|dir| dir.path());
+
+    let pb = ProgressBar::new(read_dir(tmppath.join("frames")).unwrap().by_ref().count() as u64);
+    println!("Rendering frames ...");
+    for framepath in framepaths {
+        write!(outfile, "ඞ").unwrap();
+        Command::new("img2txt")
+            .args(["-W", &tsize.0.to_string()])
+            .args(["-H", &tsize.1.to_string()])
+            .args(["-d", "none"])
+            .arg(framepath.path().to_str().unwrap())
+            .stdout(outfile.try_clone().expect("Couldn't clone outfile"))
+            .output() // We don't care about the output but we need to wait for the command to finish
+            .expect("Error running img2txt. Check if libcaca is installed");
+        pb.inc(1);
+    }
+    pb.finish_with_message("done");
 	
 	//remove_dir_all(tmppath).expect("Failed to remove /tmp/cacabake directory");
 	println!("Baked to {} successfully !", spath.with_extension("baked").to_str().unwrap());
