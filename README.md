@@ -13,6 +13,12 @@ However, baked text files often weigh 3-5 times more than the original video fil
 
 ## Build & run
 
-Build once with `cargo build --release` then run `./target/release/cacabake video.mp4` to create the `video.baked` file, and `./target/release/cacabake video.baked` to display it. Pass the `-l` argument to play on loop. Press q to leave playback.
+Build once with `cargo build --release` then run `./target/release/cacabake video.mp4` to create the `video.baked` file, and `./target/release/cacabake video.baked` to display it. Arguments : 
+
+- `-l` : Play on loop;
+- `-a` : Any key exits playback;
+- `-q` : Quiet, no output other than video.
+
+If `-a` is not defined, press q to leave playback.
 
 Videos are baked to the size of the terminal that the command is run in. The video will be stretched to fit, so videos should match the aspect ratio of the terminal to look correct.

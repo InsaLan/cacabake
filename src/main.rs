@@ -5,6 +5,7 @@ use std::env;
 use std::fs::*;
 use std::io::{Write, stdout};
 use std::path::Path;
+use std::process::exit;
 use std::process::Command;
 use std::str::FromStr;
 use std::thread;
@@ -25,7 +26,7 @@ use essi_ffmpeg::FFmpeg;
 
 use tokio::task;
 
-async fn bake_video(spath: &Path) {
+async fn bake_video(spath: &Path, quiet: bool) {
 	let tmppath = Path::new("/tmp/cacabake");
 	
 	if tmppath.exists() {
@@ -33,7 +34,7 @@ async fn bake_video(spath: &Path) {
 	}
 	create_dir_all(tmppath).expect("Failed to create /tmp/cacabake directory");
 	
-	println!("Getting framerate...");
+	if !quiet { println!("Getting framerate..."); }
 	
 	let ffoutput = ffprobe::ffprobe(spath).expect("FFprobe error");
 	//dbg!(&ffoutput);
@@ -45,7 +46,7 @@ async fn bake_video(spath: &Path) {
 		}
 	}
 	if i == -1 {
-		println!("No video stream found in input file");
+		panic!("No video stream found in input file");
 	}
 		
 	let framerate = eval(&ffoutput.streams[i as usize].avg_frame_rate).expect("Error evaluating framerate"); // Framerate is given as a fraction, we need a number so we use the `evalexpr` crate
@@ -63,7 +64,7 @@ async fn bake_video(spath: &Path) {
 	
 	create_dir_all(tmppath.join("frames")).expect("Failed to create /tmp/cacabake/frames directory");
 	
-	println!("Extracting frames...");
+	if !quiet { println!("Extracting frames..."); }
 	
 	let mut ffmpeg = FFmpeg::new()
 		.stderr(std::process::Stdio::inherit())
@@ -81,7 +82,7 @@ async fn bake_video(spath: &Path) {
 	framepaths.sort_by_key(|dir| dir.path());
 
     let pb = ProgressBar::new(read_dir(tmppath.join("frames")).unwrap().by_ref().count() as u64);
-    println!("Rendering frames ...");
+    if !quiet { println!("Rendering frames ..."); }
     for framepath in framepaths {
         write!(outfile, "ඞ").unwrap();
         Command::new("img2txt")
@@ -97,11 +98,11 @@ async fn bake_video(spath: &Path) {
     pb.finish_with_message("done");
 	
 	//remove_dir_all(tmppath).expect("Failed to remove /tmp/cacabake directory");
-	println!("Baked to {} successfully !", spath.with_extension("baked").to_str().unwrap());
+	if !quiet { println!("Baked to {} successfully !", spath.with_extension("baked").to_str().unwrap()); }
 }
 
-async fn play_video(spath: &Path, lop: bool) {
-	println!("Loading...");
+async fn play_video(spath: &Path, quiet: bool, lop: bool, any_key: bool) {
+	if !quiet { println!("Loading..."); }
 	let mut stdout = stdout();
 	
 	crossterm::terminal::enable_raw_mode().unwrap();
@@ -128,9 +129,9 @@ async fn play_video(spath: &Path, lop: bool) {
 			
 			if crossterm::event::poll(std::time::Duration::from_secs(0)).unwrap() {
 				if let crossterm::event::Event::Key(key_event) = crossterm::event::read().unwrap() {
-					if key_event.code == crossterm::event::KeyCode::Char('q') {
+					if key_event.code == crossterm::event::KeyCode::Char('q') || any_key {
 						crossterm::execute!(stdout, crossterm::terminal::LeaveAlternateScreen).unwrap();
-						println!("Playback interrupted by user");
+						if !quiet { println!("Playback interrupted by user"); }
 						break 'outer;
 					}
 				}
@@ -139,7 +140,7 @@ async fn play_video(spath: &Path, lop: bool) {
 
 		if !lop {
 			crossterm::execute!(stdout, crossterm::terminal::LeaveAlternateScreen).unwrap();
-			println!("Reached end of video");
+			if !quiet { println!("Reached end of video"); }
 			break;
 		}
 	}
@@ -149,7 +150,7 @@ async fn play_video(spath: &Path, lop: bool) {
 
 fn print_usage(program: &str, opts: Options) {
 	let brief = format!("Usage: {} FILE [options]", program);
-	print!("{}", opts.usage(&brief));
+	println!("{}", opts.usage(&brief));
 }
 
 #[tokio::main]
@@ -160,6 +161,8 @@ async fn main() {
 	let mut opts = Options::new();
 	
 	opts.optflag("l", "loop", "play on loop (if input is baked file)");
+	opts.optflag("a", "any", "any key press will exit playback");
+	opts.optflag("q", "quiet", "quiet mode, no output other than video");
 	opts.optflag("h", "help", "print this help menu");
 	
 	let matches = match opts.parse(&args[1..]) {
@@ -175,6 +178,16 @@ async fn main() {
 	let mut lop = false;
 	if matches.opt_present("l") {
 		lop = true;
+	}
+	
+	let mut any_key = false;
+	if matches.opt_present("a") {
+		any_key = true;
+	}
+	
+	let mut quiet = false;
+	if matches.opt_present("a") {
+		quiet = true;
 	}
 	
 	let spath = if !matches.free.is_empty() {
@@ -193,9 +206,9 @@ async fn main() {
 	
 	if video_types.contains(&spath.extension().unwrap().to_string_lossy().as_ref()) {
 		println!("Video will be baked to current terminal dimensions");
-		bake_video(&spath).await;
+		bake_video(&spath, quiet).await;
 	} else if spath.extension().unwrap().to_string_lossy() == "baked" { 
-		play_video(&spath, lop).await;
+		play_video(&spath, quiet, lop, any_key).await;
 	} else {
 		println!("Invalid format, must be video or baked file");
 		return;
