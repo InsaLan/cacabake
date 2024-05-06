@@ -100,11 +100,11 @@ async fn bake_video(spath: &Path) {
 	println!("Baked to {} successfully !", spath.with_extension("baked").to_str().unwrap());
 }
 
-async fn play_video(spath: &Path, lop: bool) {
+async fn play_video(spath: &Path, lop: bool, any_key: bool) {
 	println!("Loading...");
 	let mut stdout = stdout();
 	
-	crossterm::terminal::enable_raw_mode().unwrap();
+		crossterm::terminal::enable_raw_mode().unwrap();
 	crossterm::execute!(stdout, crossterm::cursor::Hide).unwrap();
 	crossterm::execute!(stdout, crossterm::terminal::DisableLineWrap).unwrap();
 	crossterm::execute!(stdout, crossterm::terminal::EnterAlternateScreen).unwrap();
@@ -128,7 +128,7 @@ async fn play_video(spath: &Path, lop: bool) {
 			
 			if crossterm::event::poll(std::time::Duration::from_secs(0)).unwrap() {
 				if let crossterm::event::Event::Key(key_event) = crossterm::event::read().unwrap() {
-					if key_event.code == crossterm::event::KeyCode::Char('q') {
+					if key_event.code == crossterm::event::KeyCode::Char('q') || any_key {
 						crossterm::execute!(stdout, crossterm::terminal::LeaveAlternateScreen).unwrap();
 						println!("Playback interrupted by user");
 						break 'outer;
@@ -149,7 +149,7 @@ async fn play_video(spath: &Path, lop: bool) {
 
 fn print_usage(program: &str, opts: Options) {
 	let brief = format!("Usage: {} FILE [options]", program);
-	print!("{}", opts.usage(&brief));
+	println!("{}", opts.usage(&brief));
 }
 
 #[tokio::main]
@@ -160,6 +160,7 @@ async fn main() {
 	let mut opts = Options::new();
 	
 	opts.optflag("l", "loop", "play on loop (if input is baked file)");
+	opts.optflag("a", "any", "any key press will exit playback");
 	opts.optflag("h", "help", "print this help menu");
 	
 	let matches = match opts.parse(&args[1..]) {
@@ -175,6 +176,11 @@ async fn main() {
 	let mut lop = false;
 	if matches.opt_present("l") {
 		lop = true;
+	}
+	
+	let mut any_key = false;
+	if matches.opt_present("a") {
+		any_key = true;
 	}
 	
 	let spath = if !matches.free.is_empty() {
@@ -195,7 +201,7 @@ async fn main() {
 		println!("Video will be baked to current terminal dimensions");
 		bake_video(&spath).await;
 	} else if spath.extension().unwrap().to_string_lossy() == "baked" { 
-		play_video(&spath, lop).await;
+		play_video(&spath, lop, any_key).await;
 	} else {
 		println!("Invalid format, must be video or baked file");
 		return;

@@ -9,10 +9,17 @@ However, baked text files often weigh 3-5 times more than the original video fil
 ## Requirements
 
 `ffmpeg` \
-`libcaca` (this script uses `img2txt` specifically)
+`libcaca` (this script uses `img2txt` specifically) \
+`bc` (for `idleplayer.sh` only)
 
 ## Build & run
 
 Build once with `cargo build --release` then run `./target/release/cacabake video.mp4` to create the `video.baked` file, and `./target/release/cacabake video.baked` to display it. Pass the `-l` argument to play on loop. Press q to leave playback.
 
 Videos are baked to the size of the terminal that the command is run in. The video will be stretched to fit, so videos should match the aspect ratio of the terminal to look correct.
+
+## Screensaver
+
+`screensaver.sh <duration> video.baked` will play video.baked after the specified idle time, which can be useful to set up a sort of "screen saver".
+
+To run this command on login,
