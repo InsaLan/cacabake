@@ -5,7 +5,6 @@ use std::env;
 use std::fs::*;
 use std::io::{Write, stdout};
 use std::path::Path;
-use std::process::exit;
 use std::process::Command;
 use std::str::FromStr;
 use std::thread;
@@ -81,21 +80,21 @@ async fn bake_video(spath: &Path, quiet: bool) {
 	
 	framepaths.sort_by_key(|dir| dir.path());
 
-    let pb = ProgressBar::new(read_dir(tmppath.join("frames")).unwrap().by_ref().count() as u64);
-    if !quiet { println!("Rendering frames ..."); }
-    for framepath in framepaths {
-        write!(outfile, "ඞ").unwrap();
-        Command::new("img2txt")
-            .args(["-W", &tsize.0.to_string()])
-            .args(["-H", &tsize.1.to_string()])
-            .args(["-d", "none"])
-            .arg(framepath.path().to_str().unwrap())
-            .stdout(outfile.try_clone().expect("Couldn't clone outfile"))
-            .output() // We don't care about the output but we need to wait for the command to finish
-            .expect("Error running img2txt. Check if libcaca is installed");
-        pb.inc(1);
-    }
-    pb.finish_with_message("done");
+	let pb = ProgressBar::new(read_dir(tmppath.join("frames")).unwrap().by_ref().count() as u64);
+	if !quiet { println!("Rendering frames ..."); }
+	for framepath in framepaths {
+		write!(outfile, "ඞ").unwrap();
+		Command::new("img2txt")
+			.args(["-W", &tsize.0.to_string()])
+			.args(["-H", &tsize.1.to_string()])
+			.args(["-d", "none"])
+			.arg(framepath.path().to_str().unwrap())
+			.stdout(outfile.try_clone().expect("Couldn't clone outfile"))
+			.output() // We don't care about the output but we need to wait for the command to finish
+			.expect("Error running img2txt. Check if libcaca is installed");
+		pb.inc(1);
+	}
+	pb.finish_with_message("done");
 	
 	//remove_dir_all(tmppath).expect("Failed to remove /tmp/cacabake directory");
 	if !quiet { println!("Baked to {} successfully !", spath.with_extension("baked").to_str().unwrap()); }
@@ -116,7 +115,8 @@ async fn play_video(spath: &Path, quiet: bool, lop: bool, any_key: bool) {
 		let framerate: f64 = frames.next().unwrap().parse().unwrap();
 
 		for frame in frames {
-			crossterm::execute!(stdout, crossterm::terminal::Clear(crossterm::terminal::ClearType::All)).unwrap(); // This almost works...
+			//crossterm::execute!(stdout, crossterm::terminal::Clear(crossterm::terminal::ClearType::All)).unwrap(); // This almost works...
+			crossterm::execute!(stdout, crossterm::cursor::MoveTo(0, 0)).unwrap();
 			
 			let print_task = task::spawn(async move {
 				print!("{}", &frame.trim_end_matches('\n'));
@@ -144,7 +144,8 @@ async fn play_video(spath: &Path, quiet: bool, lop: bool, any_key: bool) {
 			break;
 		}
 	}
-	crossterm::execute!(stdout, crossterm::cursor::Show).unwrap();
+	crossterm::execute!(stdout, crossterm::terminal::LeaveAlternateScreen).unwrap();
+	crossterm::execute!(stdout, crossterm::cursor::Show).unwrap();    
 	crossterm::execute!(stdout, crossterm::terminal::EnableLineWrap).unwrap();
 }
 
