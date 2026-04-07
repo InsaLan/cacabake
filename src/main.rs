@@ -4,9 +4,9 @@
 use std::env;
 use std::fs::*;
 use std::io::{Write, stdout};
+use std::panic;
 use std::path::Path;
 use std::process::Command;
-use std::str::FromStr;
 use std::thread;
 use std::time::Duration;
 
@@ -19,13 +19,21 @@ use crossterm;
 
 use evalexpr::*;
 
-use ffprobe;
-
-use essi_ffmpeg::FFmpeg;
-
 use tokio::task;
 
+fn check_dependencies() {
+	if Command::new("ffmpeg").arg("-version").output().is_err()
+		|| Command::new("ffprobe").arg("-version").output().is_err() {
+		panic!("FFmpeg is not installed or not in PATH. Please visit https://ffmpeg.org/download.html to see how to install it for your operating system.");
+	}
+	if Command::new("img2txt").arg("--help").output().is_err() {
+		panic!("libcaca is not installed or not in PATH. Please find a way to install it for your operating system.");
+	}
+}
+
 async fn bake_video(spath: &Path, quiet: bool) {
+	check_dependencies();
+
 	let tmppath = Path::new("/tmp/cacabake");
 	
 	if tmppath.exists() {
@@ -34,21 +42,37 @@ async fn bake_video(spath: &Path, quiet: bool) {
 	create_dir_all(tmppath).expect("Failed to create /tmp/cacabake directory");
 	
 	if !quiet { println!("Getting framerate..."); }
-	
-	let ffoutput = ffprobe::ffprobe(spath).expect("FFprobe error");
-	//dbg!(&ffoutput);
-	let mut i = -1;
-	for stream in &ffoutput.streams { // Pick the first stream that is a video stream
-		i += 1;
-		if stream.codec_type == Some(String::from_str("video").unwrap()) {
-			break;
-		}
+
+	let ffprobe_output = Command::new("ffprobe")
+		.arg("-v")
+		.arg("error")
+		.arg("-select_streams")
+		.arg("v:0")
+		.arg("-show_entries")
+		.arg("stream=avg_frame_rate")
+		.arg("-of")
+		.arg("default=noprint_wrappers=1:nokey=1")
+		.arg(spath)
+		.output()
+		.expect("FFprobe error");
+
+	if !ffprobe_output.status.success() {
+		panic!(
+			"FFprobe error: {}",
+			String::from_utf8_lossy(&ffprobe_output.stderr)
+		);
 	}
-	if i == -1 {
+
+	let framerate_expr = String::from_utf8(ffprobe_output.stdout)
+		.expect("FFprobe output was not valid UTF-8")
+		.trim()
+		.to_string();
+
+	if framerate_expr.is_empty() {
 		panic!("No video stream found in input file");
 	}
-		
-	let framerate = eval(&ffoutput.streams[i as usize].avg_frame_rate).expect("Error evaluating framerate"); // Framerate is given as a fraction, we need a number so we use the `evalexpr` crate
+
+	let framerate = eval(&framerate_expr).expect("Error evaluating framerate"); // Framerate is given as a fraction, we need a number so we use the `evalexpr` crate
 	
 	if spath.with_extension("baked").exists() {
 		remove_file(spath.with_extension("baked")).expect("Failed to remove existing baked file");
@@ -64,15 +88,22 @@ async fn bake_video(spath: &Path, quiet: bool) {
 	create_dir_all(tmppath.join("frames")).expect("Failed to create /tmp/cacabake/frames directory");
 	
 	if !quiet { println!("Extracting frames..."); }
-	
-	let mut ffmpeg = FFmpeg::new()
-		.stderr(std::process::Stdio::inherit())
-		.input_with_file(spath.to_path_buf()).done()
-		.arg("-loglevel").arg("quiet")
-		.arg(tmppath.join("frames/%015d.png").to_str().unwrap())
-		.start().expect("FFmpeg error");
 
-	ffmpeg.wait().expect("FFmpeg error");
+	let ffmpeg_output = Command::new("ffmpeg")
+		.arg("-i")
+		.arg(spath)
+		.arg("-loglevel")
+		.arg("quiet")
+		.arg(tmppath.join("frames/%015d.png").to_str().unwrap())
+		.output()
+		.expect("FFmpeg error");
+
+	if !ffmpeg_output.status.success() {
+		panic!(
+			"FFmpeg error: {}",
+			String::from_utf8_lossy(&ffmpeg_output.stderr)
+		);
+	}
 	
 	let tsize = crossterm::terminal::size().expect("Couldn't get terminal size");
 	
@@ -102,12 +133,24 @@ async fn bake_video(spath: &Path, quiet: bool) {
 
 async fn play_video(spath: &Path, quiet: bool, lop: bool, any_key: bool) {
 	if !quiet { println!("Loading..."); }
-	let mut stdout = stdout();
+	let mut out = stdout();
 	
 	crossterm::terminal::enable_raw_mode().unwrap();
-	crossterm::execute!(stdout, crossterm::cursor::Hide).unwrap();
-	crossterm::execute!(stdout, crossterm::terminal::DisableLineWrap).unwrap();
-	crossterm::execute!(stdout, crossterm::terminal::EnterAlternateScreen).unwrap();
+	crossterm::execute!(out, crossterm::cursor::Hide).unwrap();
+	crossterm::execute!(out, crossterm::terminal::DisableLineWrap).unwrap();
+	crossterm::execute!(out, crossterm::terminal::EnterAlternateScreen).unwrap();
+	
+	// This will be called on a panic so the terminal doesn't stay all messed up
+	panic::set_hook(Box::new(|info| {
+		let mut stdout = std::io::stdout();
+
+		crossterm::terminal::disable_raw_mode().unwrap();
+		crossterm::execute!(stdout, crossterm::terminal::EnableLineWrap).unwrap();
+		crossterm::execute!(stdout, crossterm::terminal::LeaveAlternateScreen).unwrap();
+		crossterm::execute!(stdout, crossterm::cursor::Show).unwrap();
+
+		println!("{}", info);
+	}));
 	
 	'outer: loop {
 		let file_content = read_to_string(spath).expect("Failed to read baked file");
@@ -116,7 +159,7 @@ async fn play_video(spath: &Path, quiet: bool, lop: bool, any_key: bool) {
 
 		for frame in frames {
 			//crossterm::execute!(stdout, crossterm::terminal::Clear(crossterm::terminal::ClearType::All)).unwrap(); // This almost works...
-			crossterm::execute!(stdout, crossterm::cursor::MoveTo(0, 0)).unwrap();
+			crossterm::execute!(out, crossterm::cursor::MoveTo(0, 0)).unwrap();
 			
 			let print_task = task::spawn(async move {
 				print!("{}", &frame.trim_end_matches('\n'));
@@ -130,7 +173,7 @@ async fn play_video(spath: &Path, quiet: bool, lop: bool, any_key: bool) {
 			if crossterm::event::poll(std::time::Duration::from_secs(0)).unwrap() {
 				if let crossterm::event::Event::Key(key_event) = crossterm::event::read().unwrap() {
 					if key_event.code == crossterm::event::KeyCode::Char('q') || any_key {
-						crossterm::execute!(stdout, crossterm::terminal::LeaveAlternateScreen).unwrap();
+						crossterm::execute!(out, crossterm::terminal::LeaveAlternateScreen).unwrap();
 						if !quiet { println!("Playback interrupted by user"); }
 						break 'outer;
 					}
@@ -139,14 +182,15 @@ async fn play_video(spath: &Path, quiet: bool, lop: bool, any_key: bool) {
 		}
 
 		if !lop {
-			crossterm::execute!(stdout, crossterm::terminal::LeaveAlternateScreen).unwrap();
+			crossterm::execute!(out, crossterm::terminal::LeaveAlternateScreen).unwrap();
 			if !quiet { println!("Reached end of video"); }
 			break;
 		}
 	}
-	crossterm::execute!(stdout, crossterm::terminal::LeaveAlternateScreen).unwrap();
-	crossterm::execute!(stdout, crossterm::cursor::Show).unwrap();    
-	crossterm::execute!(stdout, crossterm::terminal::EnableLineWrap).unwrap();
+	crossterm::terminal::disable_raw_mode().unwrap();
+	crossterm::execute!(out, crossterm::terminal::LeaveAlternateScreen).unwrap();
+	crossterm::execute!(out, crossterm::cursor::Show).unwrap();    
+	crossterm::execute!(out, crossterm::terminal::EnableLineWrap).unwrap();
 }
 
 fn print_usage(program: &str, opts: Options) {

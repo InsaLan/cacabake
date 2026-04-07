@@ -11,6 +11,8 @@ However, baked text files often weigh 3-5 times more than the original video fil
 `ffmpeg` \
 `libcaca` (this script uses `img2txt` specifically)
 
+NB: These requirements are only for baking videos, playback can be done without them.
+
 ## Build & run
 
 Build once with `cargo build --release` then run `./target/release/cacabake video.mp4` to create the `video.baked` file, and `./target/release/cacabake video.baked` to display it. Arguments : 
