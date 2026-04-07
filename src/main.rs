@@ -1,5 +1,6 @@
 // Made by pixup1 for Insalan XIX
 
+use std::cmp::max;
 // std
 use std::env;
 use std::fs::*;
@@ -156,13 +157,35 @@ async fn play_video(spath: &Path, quiet: bool, lop: bool, any_key: bool) {
 		let file_content = read_to_string(spath).expect("Failed to read baked file");
 		let mut frames = file_content.split("ඞ").map(|s| s.to_string()); // Map the &str to Strings to avoid lifetime issues (???)
 		let framerate: f64 = frames.next().unwrap().parse().unwrap();
+		
+		let tsize_old: (u16, u16) = (0, 0);
 
 		for frame in frames {
-			//crossterm::execute!(stdout, crossterm::terminal::Clear(crossterm::terminal::ClearType::All)).unwrap(); // This almost works...
-			crossterm::execute!(out, crossterm::cursor::MoveTo(0, 0)).unwrap();
+			let tsize = crossterm::terminal::size().expect("Couldn't get terminal size");
+			
+			if tsize.0 != tsize_old.0 || tsize.1 != tsize_old.1 {
+				crossterm::execute!(out, crossterm::terminal::Clear(crossterm::terminal::ClearType::All)).unwrap();
+			}
 			
 			let print_task = task::spawn(async move {
-				print!("{}", &frame.trim_end_matches('\n'));
+				let mut t_out = stdout();
+				
+				let fsize = (frame.lines().next().unwrap().len() as u16, frame.lines().count() as u16);
+				
+				let mut cursor_pos = ((tsize.0 as i16 - fsize.0 as i16) / 2, (tsize.1 as i16 - fsize.1 as i16) / 2);
+				let shift: u16 = max(0, tsize.0 - cursor_pos.0 as u16);
+				
+				for line in frame.lines() {
+					let line = line.chars().skip(shift as usize).collect::<String>();
+				
+					if (cursor_pos.1 <= tsize.1 as i16) && (cursor_pos.1 >= 0) {
+						crossterm::execute!(t_out, crossterm::cursor::MoveTo(cursor_pos.0 as u16, cursor_pos.1 as u16)).unwrap(); // TODO: print line by line and handle frames that are bigger than the terminal
+						
+						print!("{}", &line);
+					}
+					
+					cursor_pos.1 += 1;
+				}
 			});
 			let tempo_task = task::spawn(async move {
 				thread::sleep(Duration::from_secs_f64(1.0 / framerate));
@@ -208,6 +231,7 @@ async fn main() {
 	opts.optflag("l", "loop", "play on loop (if input is baked file)");
 	opts.optflag("a", "any", "any key press will exit playback");
 	opts.optflag("q", "quiet", "quiet mode, no output other than video");
+	opts.optflag("r", "resolution", "bake to a specific resolution (WIDTHxHEIGHT)");
 	opts.optflag("h", "help", "print this help menu");
 	
 	let matches = match opts.parse(&args[1..]) {
